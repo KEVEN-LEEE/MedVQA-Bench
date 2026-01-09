@@ -58,7 +58,7 @@ Insert the training/validation result images in the **"Result Analysis"** sectio
 - **Key Insight**: The gap between training and validation accuracy (~16%) suggests mild overfitting, which is expected given the model's complexity (attention + LSTM + CNN). The early stopping mechanism (patience=15) prevents further overfitting by stopping training once validation accuracy plateaus.
 
 ### Image 2: Training & Validation Results from `vlmv3_draw.py`
-<img width="1000" height="800" alt="results (1)" src="https://github.com/user-attachments/assets/4111695b-000e-42d6-b3b3-20524c00ecce" />
+<img width="1280" height="1080" alt="training_validation_results" src="https://github.com/user-attachments/assets/4c64e0ce-5825-45a3-be65-4c86d9b9695d" />
 
 
 #### Analysis

@@ -15,10 +15,10 @@ import torchvision.transforms as T
 import torchvision.models as models
 import warnings
 import matplotlib.pyplot as plt
-import pandas as pd  # [新增] 引入 Pandas 处理表格
-import time          # [新增] 引入 Time 统计耗时
+import pandas as pd  
+import time          
 
-# ===================== 0. 环境设置 =====================
+# ===================== 0. Environment Setup =====================
 warnings.filterwarnings("ignore")
 
 def set_seed(seed=42):
@@ -30,7 +30,7 @@ def set_seed(seed=42):
     torch.backends.cudnn.benchmark = True 
 set_seed()
 
-# ===================== 1. 配置参数 =====================
+# ===================== 1. Configuration Parameters =====================
 class Config:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -39,18 +39,18 @@ class Config:
         self.val_anno_path = os.path.join(self.root_dir, "validate.json")
         self.img_base_dir = os.path.join(self.root_dir, "imgs")
         
-        # 4090 优化参数
+        # RTX 4090 Optimization Parameters
         self.max_text_length = 32
         self.batch_size = 128
         self.epochs = 100
         
-        # 学习率
+        # Learning Rates
         self.lr_cnn = 1e-5
         self.lr_lstm = 5e-4
         self.lr_head = 1e-3
         self.weight_decay = 1e-4
         
-        # 模型参数
+        # Model Parameters
         self.embedding_dim = 300
         self.hidden_dim = 512
         self.num_lstm_layers = 2
@@ -63,7 +63,7 @@ class Config:
 config = Config()
 os.makedirs(config.save_dir, exist_ok=True)
 
-# ===================== 2. 数据处理 =====================
+# ===================== 2. Data Processing =====================
 train_transforms = T.Compose([
     T.Resize((256, 256)),
     T.RandomCrop((224, 224)),
@@ -82,7 +82,7 @@ val_transforms = T.Compose([
 
 def load_annotations(anno_path):
     if not os.path.exists(anno_path):
-        raise FileNotFoundError(f"标注文件不存在：{anno_path}")
+        raise FileNotFoundError(f"Annotation file not found: {anno_path}")
     with open(anno_path, "r", encoding="utf-8") as f:
         try:
             annotations = json.load(f)
@@ -113,7 +113,7 @@ def build_vocab(samples, min_occurrence):
     word_vocab = ["<pad>", "<unk>"] + sorted([word for word, cnt in word_counts.items() if cnt >= min_occurrence])
     word2idx = {word: i for i, word in enumerate(word_vocab)}
     
-    print(f"Answer vocab: {len(answer2idx)} | Question vocab: {len(word2idx)}")
+    print(f"Answer vocab size: {len(answer2idx)} | Question vocab size: {len(word2idx)}")
     return answer2idx, word2idx
 
 class MedicalVQADataset(Dataset):
@@ -159,10 +159,10 @@ class MedicalVQADataset(Dataset):
             "pixel_values": image,
             "input_ids": input_ids,
             "labels": torch.tensor(label, dtype=torch.long),
-            "index": idx # [新增] 返回索引以便追踪错误案例
+            "index": idx # Return index to track error cases
         }
 
-# ===================== 3. 模型定义 =====================
+# ===================== 3. Model Definition =====================
 
 class VisualAttention(nn.Module):
     def __init__(self, v_dim, q_dim, att_dim):
@@ -208,7 +208,7 @@ class MedicalVQA_Attention(nn.Module):
             nn.Linear(1024, num_classes)
         )
         
-        # [新增] 用于统计的临时容器
+        # Temporary containers for statistics
         self.stat_attn_weights_mean = 0.0
         self.stat_lstm_out_std = 0.0
 
@@ -221,14 +221,14 @@ class MedicalVQA_Attention(nn.Module):
         self.lstm.flatten_parameters()
         lstm_out, (h_n, c_n) = self.lstm(embeds)
         
-        # [新增统计] 记录 LSTM 输出的标准差（衡量特征丰富度）
+        # Log LSTM standard deviation (measure feature richness)
         if not self.training:
             self.stat_lstm_out_std = lstm_out.std().item()
 
         q_feat = torch.cat([h_n[-2], h_n[-1]], dim=1)
         v_att, attn_weights = self.attention(img_feat, q_feat)
         
-        # [新增统计] 记录 Attention 权重的最大值均值（衡量聚焦程度）
+        # Log mean of max Attention weights (measure focus degree)
         if not self.training:
             self.stat_attn_weights_mean = attn_weights.max(dim=1)[0].mean().item()
         
@@ -236,7 +236,7 @@ class MedicalVQA_Attention(nn.Module):
         logits = self.classifier(combined)
         return logits
 
-# ===================== 4. 训练与验证 =====================
+# ===================== 4. Training & Validation =====================
 def train_one_epoch(model, loader, criterion, optimizer, scaler):
     model.train()
     total_loss, correct, total = 0, 0, 0
@@ -269,7 +269,7 @@ def validate(model, loader, criterion, raw_samples, idx2ans):
     model.eval()
     total_loss, correct, total = 0, 0, 0
     
-    # 统计容器
+    # Statistical containers
     error_samples = []
     attn_stats = []
     lstm_stats = []
@@ -284,7 +284,7 @@ def validate(model, loader, criterion, raw_samples, idx2ans):
             logits = model(pixel_values, input_ids)
             loss = criterion(logits, labels)
             
-        # 收集核心特征统计
+        # Collect core feature statistics
         attn_stats.append(model.stat_attn_weights_mean)
         lstm_stats.append(model.stat_lstm_out_std)
 
@@ -293,7 +293,7 @@ def validate(model, loader, criterion, raw_samples, idx2ans):
         correct += (preds == labels).sum().item()
         total += labels.size(0)
         
-        # 收集错误案例 (仅收集前5个以控制输出)
+        # Collect error samples (limit to 5 for output control)
         if len(error_samples) < 5:
             mistakes = (preds != labels).nonzero(as_tuple=True)[0]
             for idx in mistakes:
@@ -306,7 +306,7 @@ def validate(model, loader, criterion, raw_samples, idx2ans):
     return (total_loss / len(loader), correct / total, 
             np.mean(attn_stats), np.mean(lstm_stats), error_samples)
 
-# ===================== 5. 主程序 =====================
+# ===================== 5. Main Program =====================
 def main():
     start_train_time = time.time()
     print(f"Device: {config.device} (RTX 4090 Optimization Enabled)")
@@ -342,7 +342,7 @@ def main():
     best_epoch = 0
     patience_cnt = 0
     
-    # [新增] 详细统计数据容器
+    # Detailed statistics container
     metrics_data = []
     
     history = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
@@ -354,7 +354,7 @@ def main():
         t_loss, t_acc, t_time = train_one_epoch(model, train_loader, criterion, optimizer, scaler)
         v_loss, v_acc, att_mean, lstm_std, err_cases = validate(model, val_loader, criterion, val_raw, idx2ans)
         
-        # 记录统计数据
+        # Log metrics
         gpu_mem = torch.cuda.max_memory_allocated() / 1024**3
         metrics_data.append({
             "Epoch": epoch + 1,
@@ -364,9 +364,9 @@ def main():
             "Val Acc": round(v_acc, 4),
             "Time (s)": round(t_time, 1),
             "GPU Mem (GB)": round(gpu_mem, 2),
-            "Attn Focus Score": round(att_mean, 4), # 注意力集中度
-            "LSTM Activations": round(lstm_std, 4), # LSTM 活跃度
-            "Sample Errors": str(err_cases[:1]) # 只留一个例子防爆表
+            "Attn Focus Score": round(att_mean, 4), 
+            "LSTM Activations": round(lstm_std, 4),
+            "Sample Errors": str(err_cases[:1]) # Keep one sample for brevity
         })
         
         history['train_loss'].append(t_loss)
@@ -392,7 +392,7 @@ def main():
             print(f"Early stopping triggered. Best Val Acc: {best_acc:.4f}")
             break
 
-    # ===================== 6. 结果绘制 (保持不变) =====================
+    # ===================== 6. Plotting Results =====================
     print("Plotting results...")
     epochs_range = range(1, len(history['train_loss']) + 1)
     fig, (ax1, ax3) = plt.subplots(2, 1, figsize=(12.8, 10.8), dpi=100)
@@ -431,20 +431,20 @@ def main():
     plt.savefig(plot_save_path)
     print(f"Results plot saved to: {plot_save_path}")
 
-    # ===================== 7. 表格生成 (新增) =====================
+    # ===================== 7. Table Generation =====================
     print("\nGenerating Statistical Report...")
     df = pd.DataFrame(metrics_data)
     
-    # 保存详细 CSV
+    # Save detailed CSV
     csv_path = os.path.join(config.save_dir, "training_metrics_cnn_lstm.csv")
     df.to_csv(csv_path, index=False)
     
-    # 打印概览 (不包含错误样本列以保持整洁)
+    # Print summary (excluding error samples for clarity)
     summary_cols = ["Epoch", "Train Loss", "Val Loss", "Val Acc", "Time (s)", "Attn Focus Score"]
     print("\n[Summary Table]")
     print(df[summary_cols].to_string(index=False))
     
-    # 保存最终配置和最佳结果
+    # Save final config and best results
     final_report = {
         "Model": "CNN+LSTM+Attention",
         "Best Val Acc": best_acc,

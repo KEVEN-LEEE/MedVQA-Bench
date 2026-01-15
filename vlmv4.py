@@ -13,9 +13,9 @@ import torchvision.transforms as T
 import warnings
 import matplotlib.pyplot as plt
 import time
-import pandas as pd # [新增]
+import pandas as pd
 
-# ===================== 0. 环境与硬件设置 =====================
+# ===================== 0. Environment & Hardware Settings =====================
 warnings.filterwarnings("ignore")
 
 torch.backends.cuda.matmul.allow_tf32 = True
@@ -29,7 +29,7 @@ def set_seed(seed=42):
     torch.cuda.manual_seed_all(seed)
 set_seed()
 
-# ===================== 1. 配置 (Config) =====================
+# ===================== 1. Configuration (Config) =====================
 class Config:
     def __init__(self):
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,7 +58,7 @@ class Config:
 config = Config()
 os.makedirs(config.save_dir, exist_ok=True)
 
-# ===================== 2. 数据处理与增强 =====================
+# ===================== 2. Data Processing & Augmentation =====================
 train_transforms = T.Compose([
     T.Resize((224, 224), interpolation=T.InterpolationMode.BICUBIC),
     T.RandomHorizontalFlip(p=0.5),
@@ -153,10 +153,10 @@ class MedicalVQADataset(Dataset):
             "input_ids": input_ids,
             "attention_mask": attention_mask,
             "labels": torch.tensor(label, dtype=torch.long),
-            "index": idx # [新增]
+            "index": idx # [New]
         }
 
-# ===================== 3. 模型定义 =====================
+# ===================== 3. Model Definition =====================
 class MedicalCLIPFineTuner(nn.Module):
     def __init__(self, clip_model_name, num_classes):
         super().__init__()
@@ -184,7 +184,7 @@ class MedicalCLIPFineTuner(nn.Module):
             nn.Linear(512, num_classes)
         )
         
-        # [新增] 统计容器
+        # [New] Statistics container
         self.last_cosine_sim = 0.0
 
     def forward(self, pixel_values, input_ids, attention_mask):
@@ -197,16 +197,16 @@ class MedicalCLIPFineTuner(nn.Module):
         img_embeds = img_embeds / img_embeds.norm(dim=-1, keepdim=True)
         txt_embeds = txt_embeds / txt_embeds.norm(dim=-1, keepdim=True)
         
-        # [新增] 计算图文余弦相似度（归一化后即点积）
+        # [New] Calculate Image-Text Cosine Similarity (Dot product after normalization)
         if not self.training:
             self.last_cosine_sim = (img_embeds * txt_embeds).sum(dim=1).mean().item()
         
         logits = self.classifier(torch.cat([img_embeds, txt_embeds], dim=1))
         return logits
 
-# ===================== 4. 训练与验证流程 =====================
+# ===================== 4. Training & Validation Workflow =====================
 def get_grad_norm(model):
-    # [新增] 计算解冻层梯度的L2范数，作为参数更新力度的参考
+    # [New] Calculate L2 norm of gradients for unfrozen layers as a reference for update intensity
     total_norm = 0.0
     for p in model.parameters():
         if p.requires_grad and p.grad is not None:
@@ -233,7 +233,7 @@ def train_one_epoch(model, loader, criterion, optimizer):
         
         loss.backward()
         
-        # 统计梯度范数
+        # Track gradient norms
         grad_norms.append(get_grad_norm(model))
         
         optimizer.step()
@@ -251,7 +251,7 @@ def validate(model, loader, criterion, raw_samples, idx2ans):
     model.eval()
     total_loss, correct, total = 0.0, 0, 0
     
-    # 统计容器
+    # Statistics containers
     sim_stats = []
     error_samples = []
     
@@ -285,7 +285,7 @@ def validate(model, loader, criterion, raw_samples, idx2ans):
     return (total_loss / len(loader), correct / total, 
             np.mean(sim_stats), error_samples)
 
-# ===================== 5. 主程序 =====================
+# ===================== 5. Main Program =====================
 def main():
     print(f"Device: {config.device} | Type: {config.dtype}")
     start_train_time = time.time()
@@ -318,7 +318,7 @@ def main():
     best_epoch = 0
     patience_cnt = 0
     
-    # [新增] 统计容器
+    # [New] Statistics containers
     metrics_data = []
     history = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
     
@@ -333,7 +333,7 @@ def main():
         
         epoch_time = time.time() - t0
         
-        # 记录统计数据
+        # Record metrics
         gpu_mem = torch.cuda.max_memory_allocated() / 1024**3
         metrics_data.append({
             "Epoch": epoch + 1,
@@ -343,8 +343,8 @@ def main():
             "Val Acc": round(v_acc, 4),
             "Time (s)": round(epoch_time, 1),
             "GPU Mem (GB)": round(gpu_mem, 2),
-            "Update L2 (Grad)": round(grad_norm, 4), # 使用梯度L2代表更新力度
-            "Img-Txt CosSim": round(cosine_sim, 4),  # 图文对齐程度
+            "Update L2 (Grad)": round(grad_norm, 4), # Represent update intensity via Gradient L2
+            "Img-Txt CosSim": round(cosine_sim, 4),  # Image-Text alignment degree
             "Sample Errors": str(err_cases[:1])
         })
 
@@ -373,7 +373,7 @@ def main():
 
     print(f"Total time: {(time.time() - start_train_time):.2f}s")
 
-    # ===================== 6. 结果绘制 (保持不变) =====================
+    # ===================== 6. Plotting Results (Unchanged) =====================
     print("Plotting results...")
     epochs_range = range(1, len(history['train_loss']) + 1)
     fig, (ax1, ax3) = plt.subplots(2, 1, figsize=(12.8, 10.8), dpi=100)
@@ -410,7 +410,7 @@ def main():
     plt.savefig(plot_save_path)
     print(f"Results plot saved to: {plot_save_path}")
 
-    # ===================== 7. 表格生成 (新增) =====================
+    # ===================== 7. Table Generation (New) =====================
     print("\nGenerating Statistical Report...")
     df = pd.DataFrame(metrics_data)
     
